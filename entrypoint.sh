@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2317
 # =============================================================================
 # GitHub Actions Self-Hosted Runner — Entrypoint Script
 # =============================================================================
@@ -210,6 +211,7 @@ configure_proxy() {
 # it does not appear as offline/zombie in the GitHub runners list.
 RUNNER_PID=""
 cleanup() {
+  # shellcheck disable=SC2317
   log "Received termination signal. Initiating graceful shutdown..."
 
   # Stop run.sh if it's still running

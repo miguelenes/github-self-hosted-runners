@@ -8,6 +8,9 @@
 
 FROM ubuntu:22.04
 
+# Use bash with pipefail for all RUN instructions
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # ── Build arguments ────────────────────────────────────────────────────────────
 # Pin the runner version; update this ARG to upgrade (check actions/runner releases)
 ARG RUNNER_VERSION="2.325.0"
@@ -22,6 +25,7 @@ LABEL runner.version="${RUNNER_VERSION}"
 
 # ── System upgrade + CI/CD dependencies ───────────────────────────────────────
 # Install in a single layer to reduce image size and keep apt cache clean.
+# hadolint ignore=DL3008
 RUN apt-get update -y \
  && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends \
@@ -65,6 +69,7 @@ RUN apt-get update -y \
 # We install only docker-ce-cli (not the full daemon). The host Docker socket
 # is mounted at /var/run/docker.sock at runtime, allowing the runner to build
 # and run containers using the host's Docker daemon.
+# hadolint ignore=DL3008
 RUN install -m 0755 -d /etc/apt/keyrings \
  && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
       -o /etc/apt/keyrings/docker.asc \
@@ -127,7 +132,8 @@ RUN chmod +x /entrypoint.sh \
  && chmod -R g+rw /home/runner
 
 # ── Switch to non-root runner user ───────────────────────────────────────────
-USER runner
+# Use numeric UID (1001) per Docker security best practices & Hadolint DL3066
+USER 1001
 WORKDIR /home/runner
 
 ENTRYPOINT ["/entrypoint.sh"]

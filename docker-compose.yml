@@ -18,9 +18,6 @@
 # Remove:
 #   docker stack rm runner
 # =============================================================================
-
-version: "3.8"
-
 # ── Secrets ───────────────────────────────────────────────────────────────────
 # Docker Swarm secrets are the recommended way to handle sensitive values.
 # They are mounted as files inside the container at /run/secrets/<name>,

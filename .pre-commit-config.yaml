@@ -1,0 +1,37 @@
+# =============================================================================
+# Pre-Commit Hook Configuration (.pre-commit-config.yaml)
+# =============================================================================
+# Run 'pre-commit install' to set up hooks in your local Git repository.
+# Manual run: 'pre-commit run --all-files'
+# =============================================================================
+
+repos:
+  # ── ShellCheck (entrypoint.sh, manage.sh) ──────────────────────────────────
+  - repo: https://github.com/koalaman/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: ShellCheck (Shell Scripts)
+        entry: shellcheck
+        language: python
+        types: [shell]
+        files: ^(entrypoint\.sh|manage\.sh)$
+
+  # ── Hadolint (Dockerfile) ───────────────────────────────────────────────────
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint
+        name: Hadolint (Dockerfile)
+        types: [dockerfile]
+        files: ^Dockerfile$
+
+  # ── Docker Compose Schema Validation ────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: docker-compose-check
+        name: Docker Compose Validation
+        entry: bash -c 'GITHUB_URL=https://github.com/test/repo RUNNER_IMAGE=ghcr.io/test/runner:latest docker compose -f docker-compose.yml config --quiet'
+        language: system
+        files: ^docker-compose\.yml$
+        pass_filenames: false

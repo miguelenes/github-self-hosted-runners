@@ -34,6 +34,7 @@ Usage:
   ./manage.sh status                Display current stack status and tasks
   ./manage.sh logs                  Follow service logs
   ./manage.sh down                  Remove the stack gracefully
+  ./manage.sh setup-hooks           Enable local Git pre-commit hooks (.githooks)
 
 Options:
   --help, -h                        Show this help message
@@ -127,6 +128,14 @@ cmd_down() {
   log "Stack removal initiated. Swarm will gracefully deregister running instances."
 }
 
+cmd_setup_hooks() {
+  log "Configuring Git hooks path to '.githooks'..."
+  git config core.hooksPath .githooks
+  chmod +x .githooks/pre-commit
+  log "Pre-commit hook activated successfully! Testing hook..."
+  ./.githooks/pre-commit
+}
+
 main() {
   local action="${1:-help}"
   shift || true
@@ -138,6 +147,7 @@ main() {
     status)        cmd_status "$@" ;;
     logs)          cmd_logs "$@" ;;
     down)          cmd_down "$@" ;;
+    setup-hooks)   cmd_setup_hooks "$@" ;;
     help|--help|-h) usage ;;
     *)
       err "Unknown command: '$action'"

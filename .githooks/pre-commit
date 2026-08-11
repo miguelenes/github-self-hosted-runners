@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Git Pre-Commit Hook
+# =============================================================================
+# Mirrors the CI lint checks executed in .github/workflows/lint.yml:
+#   1. ShellCheck (entrypoint.sh, manage.sh)
+#   2. Hadolint (Dockerfile)
+#   3. Docker Compose schema validation (docker-compose.yml)
+#
+# Activate with:
+#   git config core.hooksPath .githooks
+# =============================================================================
+
+set -euo pipefail
+
+log()  { echo "[pre-commit] [INFO]  $*"; }
+warn() { echo "[pre-commit] [WARN]  $*" >&2; }
+err()  { echo "[pre-commit] [ERROR] $*" >&2; }
+
+FAILED=0
+
+log "Running pre-commit linting checks..."
+
+# ── 1. ShellCheck ─────────────────────────────────────────────────────────────
+if command -v shellcheck >/dev/null 2>&1; then
+  log "Running ShellCheck on entrypoint.sh and manage.sh..."
+  shellcheck entrypoint.sh manage.sh || FAILED=1
+else
+  warn "ShellCheck not found locally. Skipping ShellCheck (install via apt/brew)."
+fi
+
+# ── 2. Hadolint ───────────────────────────────────────────────────────────────
+if command -v hadolint >/dev/null 2>&1; then
+  log "Running Hadolint on Dockerfile..."
+  hadolint --failure-threshold error Dockerfile || FAILED=1
+elif command -v docker >/dev/null 2>&1; then
+  log "Running Hadolint via Docker container..."
+  docker run --rm -i hadolint/hadolint hadolint --failure-threshold error - < Dockerfile || FAILED=1
+else
+  warn "Hadolint and Docker not available. Skipping Hadolint."
+fi
+
+# ── 3. Docker Compose Schema Validation ───────────────────────────────────────
+if command -v docker >/dev/null 2>&1; then
+  log "Validating docker-compose.yml schema..."
+  GITHUB_URL=https://github.com/test/repo \
+  RUNNER_IMAGE=ghcr.io/test/runner:latest \
+  docker compose -f docker-compose.yml config --quiet || FAILED=1
+else
+  warn "Docker CLI not found. Skipping compose schema validation."
+fi
+
+# ── Result ────────────────────────────────────────────────────────────────────
+if [[ $FAILED -ne 0 ]]; then
+  err "Pre-commit linting failed! Please resolve errors before committing."
+  exit 1
+fi
+
+log "All pre-commit checks passed successfully! ✅"
