@@ -118,6 +118,9 @@ jobs:
             push-by-digest=true,
             name-canonical=true,
             push=${{ github.event_name != 'pull_request' }}
+          # Supply-chain attestations: SBOM (SPDX) + SLSA provenance
+          sbom:         true
+          provenance:   mode=max
           # Optimized GitHub Actions Cache with platform-scoped isolation
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to:   >-
@@ -125,7 +128,7 @@ jobs:
               && format('type=gha,mode=max,scope={0}', matrix.platform)
               || '' }}
           build-args: |
-            RUNNER_VERSION=2.325.0
+            RUNNER_VERSION=2.336.0
 
       # ── 6. Step Summary Output (Build Job) ───────────────────────────────────
       - name: Generate Step Summary (Build)

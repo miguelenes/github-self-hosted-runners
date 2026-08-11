@@ -56,7 +56,7 @@ services:
     # build:
     #   context: .
     #   args:
-    #     RUNNER_VERSION: "2.325.0"
+    #     RUNNER_VERSION: "2.336.0"
 
     # -------------------------------------------------------------------
     # Environment variables
@@ -110,11 +110,13 @@ services:
         target: /var/run/docker.sock
         read_only: false
 
-      # Optional: persistent workspace cache across ephemeral runs.
-      # Uncomment and create the volume to cache tool downloads (e.g. npm, pip).
-      # - type: volume
-      #   source: runner-workspace
-      #   target: /home/runner/_work
+      # Persistent workspace cache across ephemeral runs.
+      # Each Swarm node gets its own local volume. After a container exits,
+      # a fresh ephemeral runner on the same node reuses the cached workspace.
+      # Set WORKSPACE_CLEANUP=false in .env to retain workspace across runs.
+      - type: volume
+        source: runner-workspace
+        target: /home/runner/_work
 
     # -------------------------------------------------------------------
     # Swarm deployment configuration
@@ -191,7 +193,10 @@ networks:
     attachable: true
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
-# Uncomment if using a persistent workspace cache volume (see volumes section above).
-# volumes:
-#   runner-workspace:
-#     driver: local
+# Persistent workspace cache volume. Each Swarm node gets its own local volume.
+# Ephemeral runners reuse cached tool downloads (pip, npm, etc.) after restart.
+# The entrypoint cleans the workspace by default. Set WORKSPACE_CLEANUP=false
+# in .env to retain workspace content across ephemeral runs.
+volumes:
+  runner-workspace:
+    driver: local

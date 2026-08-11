@@ -254,6 +254,19 @@ log "Runner Labels:   ${RUNNER_LABELS}"
 log "Runner Group:    ${RUNNER_GROUP}"
 log "Ephemeral Mode:  ${RUNNER_EPHEMERAL}"
 
+# Step 0: Clean stale workspace from previous ephemeral run
+# When a persistent workspace volume is mounted (docker-compose.yml),
+# ephemeral runners benefit from cleaning the workspace to prevent
+# cross-job data leakage. Set WORKSPACE_CLEANUP=false to disable.
+WORKSPACE_CLEANUP="${WORKSPACE_CLEANUP:-true}"
+if [[ "${WORKSPACE_CLEANUP}" == "true" ]] \
+   && [[ -d /home/runner/_work ]] \
+   && [[ -n "$(ls -A /home/runner/_work 2>/dev/null)" ]]; then
+  log "Cleaning stale workspace from previous run (WORKSPACE_CLEANUP=true)..."
+  rm -rf /home/runner/_work/* /home/runner/_work/.[!.]* /home/runner/_work/..?* 2>/dev/null || true
+  log "Workspace cleaned."
+fi
+
 # Step 1: Configure proxy (writes runner .env file)
 configure_proxy
 
