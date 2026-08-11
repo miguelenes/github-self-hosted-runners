@@ -11,7 +11,7 @@
 # =============================================================================
 
 # ── Stage 1: Builder ──────────────────────────────────────────────────────────
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:26.04 AS builder
 
 # Use bash with pipefail for all RUN instructions
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -96,7 +96,7 @@ RUN ARCH=$(dpkg --print-architecture | sed 's/amd64/x64/;s/aarch64/arm64/;s/armh
  && rm -rf /var/lib/apt/lists/*
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-FROM ubuntu:24.04 AS runtime
+FROM ubuntu:26.04 AS runtime
 
 # Use bash with pipefail for all RUN instructions
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
