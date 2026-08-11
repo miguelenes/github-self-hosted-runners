@@ -1,10 +1,53 @@
+# =============================================================================
+# Dependabot Automated Dependency Updates
+# =============================================================================
+# Dependabot monitors this repository for outdated dependencies and
+# automatically opens pull requests to keep them up to date.
+#
+# For more information, see:
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+# =============================================================================
+
 version: 2
+
 updates:
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
+  # Updates action versions in workflow files (publish.yml, lint.yml).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "actions"
+      - "github-actions"
+    commit-message:
+      prefix: "ci(deps)"
+      include: "scope"
+    groups:
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Docker ──────────────────────────────────────────────────────────────────
+  # Updates the base image (ubuntu:24.04) and any Dockerfile dependencies.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "build(deps)"
+      include: "scope"

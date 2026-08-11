@@ -1,0 +1,70 @@
+# =============================================================================
+# Release Drafter Configuration
+# =============================================================================
+# Defines how pull requests are categorized and formatted in auto-generated
+# release notes. Categories are matched against PR labels.
+#
+# See: https://github.com/release-drafter/release-drafter
+# =============================================================================
+
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
+
+# ── Version Resolver ──────────────────────────────────────────────────────────
+# Auto-increments the version: major (breaking), minor (enhancement), patch (default)
+version-resolver:
+  major:
+    labels:
+      - "breaking"
+  minor:
+    labels:
+      - "enhancement"
+  patch:
+    labels:
+      - "bug"
+      - "dependencies"
+      - "documentation"
+      - "ci"
+      - "internal"
+  default: patch
+
+# ── Categories ────────────────────────────────────────────────────────────────
+categories:
+  - title: "💥 Breaking Changes"
+    labels:
+      - "breaking"
+  - title: "✨ New Features"
+    labels:
+      - "enhancement"
+  - title: "🐛 Bug Fixes"
+    labels:
+      - "bug"
+  - title: "📦 Dependencies"
+    labels:
+      - "dependencies"
+    collapse-after: 5
+  - title: "📝 Documentation"
+    labels:
+      - "documentation"
+  - title: "🔧 CI/CD"
+    labels:
+      - "ci"
+  - title: "🏠 Internal"
+    labels:
+      - "internal"
+
+# ── Templates ─────────────────────────────────────────────────────────────────
+change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
+change-title-escapes: '\<*_&'
+
+# Exclude Dependabot PRs from the notes (they're grouped under Dependencies)
+exclude-labels:
+  - "skip-changelog"
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+template: |
+  $CHANGES
+
+  ---
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION

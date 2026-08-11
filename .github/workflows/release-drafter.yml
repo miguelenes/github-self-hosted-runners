@@ -1,0 +1,44 @@
+# =============================================================================
+# Release Drafter — Automated Release Notes
+# =============================================================================
+# On every push to main, this workflow updates a draft release with categorized
+# pull requests since the last release. When you're ready to publish:
+#
+#   1. Go to the "Releases" page in GitHub
+#   2. Find the draft release
+#   3. Edit the tag (e.g. v1.2.0), review the notes, and publish
+#
+# Release notes are organized by PR labels:
+#   - breaking    → 💥 Breaking Changes
+#   - enhancement → ✨ New Features
+#   - bug         → 🐛 Bug Fixes
+#   - dependencies → 📦 Dependencies
+#   - documentation → 📝 Documentation
+#   - ci          → 🔧 CI/CD
+#   - internal    → 🏠 Internal
+# =============================================================================
+
+name: "Release Drafter"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-release-draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v6
+        with:
+          disable-autolabeler: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

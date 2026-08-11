@@ -1,0 +1,22 @@
+# =============================================================================
+# CODEOWNERS — Automated Code Review Assignments
+# =============================================================================
+# When a pull request modifies files matching a pattern, the listed owners
+# are automatically requested for review.
+#
+# Order matters: the last matching pattern takes precedence.
+# =============================================================================
+
+# ── Global owners ─────────────────────────────────────────────────────────────
+# These reviewers are assigned to all PRs by default.
+* @miguelenes
+
+# ── Docker & Deployment ───────────────────────────────────────────────────────
+/Dockerfile          @miguelenes
+/docker-compose.yml  @miguelenes
+/entrypoint.sh       @miguelenes
+/manage.sh           @miguelenes
+
+# ── GitHub Actions & CI ───────────────────────────────────────────────────────
+/.github/workflows/  @miguelenes
+/.github/            @miguelenes

@@ -1,0 +1,21 @@
+# =============================================================================
+# Issue Template Configuration
+# =============================================================================
+# Controls the behavior of the issue template chooser (shown when a user
+# clicks "New Issue").
+# =============================================================================
+
+blank_issues_enabled: true
+
+contact_links:
+  - name: "📖 Documentation"
+    url: https://github.com/miguelenes/github-self-hosted-runners#readme
+    about: "Read the project documentation before opening an issue."
+
+  - name: "🔒 Security Vulnerability"
+    url: https://github.com/miguelenes/github-self-hosted-runners/security/advisories/new
+    about: "Report a security vulnerability privately. Do NOT open a public issue."
+
+  - name: "💬 GitHub Actions Community"
+    url: https://github.com/orgs/community/discussions/categories/actions
+    about: "Ask questions about GitHub Actions in general (not specific to this project)."
