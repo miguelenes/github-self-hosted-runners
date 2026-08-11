@@ -59,7 +59,7 @@ jobs:
     steps:
       # ── 1. Source ────────────────────────────────────────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ── 2. Multi-arch support ─────────────────────────────────────────────────
       # QEMU is only needed on the arm64 matrix entry; it's a no-op on amd64.
