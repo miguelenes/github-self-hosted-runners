@@ -22,16 +22,25 @@ The runner containers:
 ```
 github-self-hosted-runners/
 ├── .github/
-│   └── workflows/
-│       └── publish.yml     # CI/CD: build multi-arch image and publish to GHCR
-├── Dockerfile              # Container image definition
-├── entrypoint.sh           # Container startup / lifecycle script
-├── docker-compose.yml      # Docker Swarm stack definition
-├── .env.example            # Environment variable reference (copy → .env)
-├── .dockerignore           # Keeps secrets out of the build context
-├── .gitignore              # Keeps secrets out of version control
-├── AGENTS.md               # This file
-└── README.md               # Public-facing documentation
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.yml    # GitHub issue form for bug reports
+│   │   └── feature_request.yml # GitHub issue form for feature requests
+│   ├── workflows/
+│   │   ├── lint.yml          # CI: ShellCheck, Hadolint & Compose validation
+│   │   └── publish.yml       # CI/CD: build multi-arch image and publish to GHCR
+│   ├── dependabot.yml        # Dependabot configuration for GitHub Actions
+│   └── PULL_REQUEST_TEMPLATE.md
+├── Dockerfile                # Container image definition
+├── entrypoint.sh             # Container startup / lifecycle script
+├── docker-compose.yml        # Docker Swarm stack definition
+├── manage.sh                 # Operator CLI helper script
+├── .env.example              # Environment variable reference (copy → .env)
+├── .dockerignore             # Keeps secrets out of the build context
+├── .gitignore                # Keeps secrets out of version control
+├── AGENTS.md                 # This file
+├── LICENSE                   # MIT License
+├── README.md                 # Public-facing documentation
+└── SECURITY.md               # Vulnerability reporting & security guidelines
 ```
 
 There are **no package managers**, **no compiled code**, and **no test frameworks** in this repo.

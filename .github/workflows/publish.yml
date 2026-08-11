@@ -54,7 +54,6 @@ jobs:
           - linux/arm64
 
     outputs:
-      # Passed to the 'merge' job for the inspect step
       image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
     steps:
@@ -80,18 +79,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 4. Generate OCI labels ────────────────────────────────────────────────
-      # docker/metadata-action computes the correct tags and labels from the
-      # Git context (branch name, tag name, commit SHA, etc.)
+      # ── 4. Generate Complete OCI Metadata ─────────────────────────────────────
+      # docker/metadata-action computes standardized OCI tags and labels from Git context
       - name: Extract Docker metadata (tags & labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # Tag rules:
-          #   push to main        → :latest (via type=edge)
-          #   push tag v2.325.0   → :2.325.0, :2.325, :2, :latest
-          #   pull request        → :pr-<number>  (build only, not pushed)
           tags: |
             type=edge,branch=main
             type=semver,pattern={{version}}
@@ -100,13 +94,17 @@ jobs:
             type=ref,event=pr
           labels: |
             org.opencontainers.image.title=GitHub Actions Self-Hosted Runner
-            org.opencontainers.image.description=Ephemeral, ephemeral-safe self-hosted GitHub Actions runners on Docker Swarm
+            org.opencontainers.image.description=Ephemeral GitHub Actions runners on Docker Swarm
             org.opencontainers.image.vendor=${{ github.repository_owner }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
             org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      # ── 5. Build (and push by digest) ────────────────────────────────────────
-      # We push by digest (not by tag) here so the 'merge' job can assemble a
-      # multi-arch manifest pointing to both digests under a single tag set.
+      # ── 5. Build with Optimized GHA Cache ─────────────────────────────────────
+      # Uses GitHub Actions native cache (type=gha) scoped per platform matrix
+      # to prevent amd64 and arm64 layer cache thrashing.
       - name: Build and push image by digest
         id: build
         uses: docker/build-push-action@v6
@@ -114,25 +112,36 @@ jobs:
           context: .
           platforms:    ${{ matrix.platform }}
           labels:       ${{ steps.meta.outputs.labels }}
-          # push-by-digest: push the image without a tag; the merge job tags it
           outputs:      >-
             type=image,
             name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},
             push-by-digest=true,
             name-canonical=true,
             push=${{ github.event_name != 'pull_request' }}
-          # Registry cache — persists layers between runs for fast rebuilds
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          # Optimized GitHub Actions Cache with platform-scoped isolation
+          cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to:   >-
             ${{ github.event_name != 'pull_request'
-              && format('type=registry,ref={0}/{1}:buildcache,mode=max', env.REGISTRY, env.IMAGE_NAME)
+              && format('type=gha,mode=max,scope={0}', matrix.platform)
               || '' }}
-          # Pass the runner version as a build arg.
-          # Keep this in sync with ARG RUNNER_VERSION in the Dockerfile.
           build-args: |
             RUNNER_VERSION=2.325.0
 
-      # ── 6. Export digest for the merge job ───────────────────────────────────
+      # ── 6. Step Summary Output (Build Job) ───────────────────────────────────
+      - name: Generate Step Summary (Build)
+        run: |
+          cat << 'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ### 🛠️ Build Completed (`${{ matrix.platform }}`)
+
+          | Attribute | Value |
+          |---|---|
+          | **Platform** | `${{ matrix.platform }}` |
+          | **Digest** | `${{ steps.build.outputs.digest }}` |
+          | **Pushed** | `${{ github.event_name != 'pull_request' }}` |
+          | **Cache Scope** | `type=gha,scope=${{ matrix.platform }}` |
+          EOF
+
+      # ── 7. Export digest for the merge job ───────────────────────────────────
       - name: Export image digest
         if: github.event_name != 'pull_request'
         run: |
@@ -140,7 +149,6 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
-      # Normalise platform name to a safe artifact name (e.g. linux/arm64 → linux-arm64)
       - name: Prepare artifact name
         if: github.event_name != 'pull_request'
         id: artifact
@@ -204,19 +212,13 @@ jobs:
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      # Confirm the final manifest contains both architectures
+      # Inspect published manifest
       - name: Inspect published manifest
         run: |
           docker buildx imagetools inspect \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
 
       # ── Cosign keyless signing ────────────────────────────────────────────────
-      # Signs the image using Sigstore's keyless OIDC flow. No private key
-      # management required — the signature is tied to the GitHub Actions OIDC
-      # identity (workflow SHA + repo + actor).
-      # Users can verify with: cosign verify ghcr.io/OWNER/github-runner:latest \
-      #   --certificate-identity-regexp "https://github.com/OWNER/.*" \
-      #   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
@@ -231,3 +233,37 @@ jobs:
           done
           # shellcheck disable=SC2086
           cosign sign --yes ${images}
+
+      # ── Workflow Summary Output (Merge Job) ──────────────────────────────────
+      - name: Generate Workflow Summary
+        run: |
+          cat << 'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ## 🚀 Multi-Arch Docker Image Published Successfully
+
+          **Image Registry:** [`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}`](https://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }})
+
+          ### 📦 Published Tags
+          EOF
+
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            echo "- \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          cat << 'EOF' >> "$GITHUB_STEP_SUMMARY"
+
+          ### 🌐 Supported Architectures
+          - `linux/amd64`
+          - `linux/arm64`
+
+          ### 🔑 Verification Command (Cosign)
+          ```bash
+          cosign verify ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }} \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}/.*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+          ```
+
+          ### ⚡ Deploy Command
+          ```bash
+          RUNNER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest ./manage.sh deploy
+          ```
+          EOF

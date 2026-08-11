@@ -31,8 +31,7 @@ This project solves every one of those problems out of the box.
 
 ## Features
 
-| | |
-|---|---|
+| 🛠️ **Operator CLI** | `./manage.sh` wrapper script for zero-friction deployment, secret creation, scaling, and status checks. |
 | 🔄 **Truly ephemeral** | Each runner processes exactly one job, then exits. Swarm brings up a fresh clean replacement automatically. |
 | 🔑 **Auto-token generation** | Provide a long-lived PAT once; runners generate fresh registration tokens on every start via the GitHub REST API. |
 | 🐳 **Docker-out-of-Docker** | Build and run containers from within your CI jobs by sharing the host Docker socket. |
@@ -40,44 +39,49 @@ This project solves every one of those problems out of the box.
 | 🔒 **Secrets-first** | PATs are stored as Docker Swarm secrets — never in environment variables, image layers, or `docker inspect` output. |
 | 🌐 **Proxy-aware** | Corporate proxy? Set `HTTPS_PROXY` and the runner configures itself before connecting to GitHub. |
 | 🔁 **Zero-downtime updates** | Rolling updates with `start-first` ordering — a new runner registers before the old one is removed. |
-| 📈 **Instantly scalable** | `docker service scale runner_github-runner=8` — that's it. |
+| 📈 **Instantly scalable** | `docker service scale runner_github-runner=8` (or `./manage.sh scale 8`) — that's it. |
 | ✅ **Signed images** | Every published image is signed with [Cosign](https://docs.sigstore.dev/) for supply-chain verification. |
 
 ---
 
 ## Quick Start
 
-### Option A — Use the pre-built image (recommended)
-
-No build step required. Pull directly from the GitHub Container Registry:
+### Option A — Use the Operator CLI (recommended)
 
 ```bash
 # 1. Clone and configure
 git clone https://github.com/miguelenes/github-self-hosted-runners.git
 cd github-self-hosted-runners
 cp .env.example .env
+nano .env   # Set GITHUB_URL
+
+# 2. Store your GitHub PAT as a Swarm secret
+./manage.sh secret-create
+
+# 3. Deploy stack
+./manage.sh deploy
+
+# 4. Check status & follow logs
+./manage.sh status
+./manage.sh logs
 ```
 
-Edit `.env` — set at minimum:
+---
+
+### Option B — Manual deployment
 
 ```bash
-GITHUB_URL=https://github.com/miguelenes/github-self-hosted-runners
-RUNNER_IMAGE=ghcr.io/miguelenes/github-runner:latest
-```
-
-```bash
-# 2. Initialise Swarm (skip if already in a Swarm)
+# 1. Initialise Swarm (skip if already in a Swarm)
 docker swarm init
 
-# 3. Store your GitHub PAT as a Docker secret
-#    Required scopes: repo  (or admin:org for org-level runners)
+# 2. Store your GitHub PAT as a Docker secret
 echo "ghp_yourPersonalAccessTokenHere" | docker secret create github_pat -
 
-# 4. Deploy
+# 3. Deploy
 export $(grep -v '^#' .env | xargs)
 docker stack deploy -c docker-compose.yml runner
 
-# 5. Watch it register
+# 4. Watch it register
 docker service logs runner_github-runner --follow
 ```
 

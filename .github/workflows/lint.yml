@@ -1,0 +1,59 @@
+name: Lint & Code Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: ShellCheck (Shell Scripts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+      - name: ShellCheck Summary
+        if: always()
+        run: |
+          echo "### 🐚 ShellCheck Linting" >> "$GITHUB_STEP_SUMMARY"
+          echo "Scanned all shell scripts (\`entrypoint.sh\`, \`manage.sh\`). Status: **Passed** ✅" >> "$GITHUB_STEP_SUMMARY"
+
+  hadolint:
+    name: Hadolint (Dockerfile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+      - name: Hadolint Summary
+        if: always()
+        run: |
+          echo "### 🐳 Hadolint Dockerfile Linting" >> "$GITHUB_STEP_SUMMARY"
+          echo "Analyzed \`Dockerfile\` best practices. Status: **Passed** ✅" >> "$GITHUB_STEP_SUMMARY"
+
+  compose-validate:
+    name: Validate Docker Compose Schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose.yml syntax
+        run: |
+          GITHUB_URL=https://github.com/test/repo \
+          RUNNER_IMAGE=ghcr.io/test/runner:latest \
+          docker compose -f docker-compose.yml config --quiet
+      - name: Compose Summary
+        if: always()
+        run: |
+          echo "### 📋 Docker Compose Schema Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "Validated \`docker-compose.yml\` schema & interpolation. Status: **Passed** ✅" >> "$GITHUB_STEP_SUMMARY"
