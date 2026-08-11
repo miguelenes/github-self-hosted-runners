@@ -210,8 +210,10 @@ configure_proxy() {
 # or SIGINT (Ctrl+C in dev). Deregisters the runner cleanly from GitHub so
 # it does not appear as offline/zombie in the GitHub runners list.
 RUNNER_PID=""
+# shellcheck disable=SC2317,SC2329
+# SC2317: cleanup() appears unreachable but is invoked via trap
+# SC2329: cleanup() appears never invoked but is invoked via trap
 cleanup() {
-  # shellcheck disable=SC2317
   log "Received termination signal. Initiating graceful shutdown..."
 
   # Stop run.sh if it's still running
