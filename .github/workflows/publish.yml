@@ -207,35 +207,37 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
 
-      # Create a multi-arch manifest that references all per-platform digests
+      # Create a multi-arch manifest that references all per-platform digests.
+      # Also captures the manifest digest for Cosign signing below.
       - name: Create and push multi-arch manifest
+        id: manifest
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create \
+          manifest_output=$(docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *))
+          echo "${manifest_output}"
+          # Extract the manifest digest (last line, sha256: prefix)
+          digest=$(echo "${manifest_output}" | tail -1 | grep -oP 'sha256:[a-f0-9]+')
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
-      # Inspect published manifest
+      # Inspect published manifest (also grabs the first tag for signing)
       - name: Inspect published manifest
+        id: inspect
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          docker buildx imagetools inspect \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          first_tag=$(echo "${TAGS}" | head -1)
+          docker buildx imagetools inspect "${first_tag}"
+          echo "first_tag=${first_tag}" >> "$GITHUB_OUTPUT"
 
       # ── Cosign keyless signing ────────────────────────────────────────────────
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.2
 
       - name: Sign the published image with Cosign (keyless)
-        env:
-          TAGS:   ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ steps.meta.outputs.digest }}
         run: |
-          images=""
-          for tag in ${TAGS}; do
-            images+="${tag}@${DIGEST} "
-          done
-          # shellcheck disable=SC2086
-          cosign sign --yes ${images}
+          cosign sign --yes "${{ steps.inspect.outputs.first_tag }}@${{ steps.manifest.outputs.digest }}"
 
       # ── Workflow Summary Output (Merge Job) ──────────────────────────────────
       - name: Generate Workflow Summary
