@@ -52,7 +52,7 @@ services:
     # Pre-built multi-arch image published to GitHub Container Registry.
     # Replace YOUR_USERNAME with the GitHub username or org that owns this repo.
     # To build locally instead, uncomment the 'build' block below.
-    image: ${RUNNER_IMAGE:-ghcr.io/YOUR_USERNAME/github-runner:latest}
+    image: ${RUNNER_IMAGE:-ghcr.io/YOUR_USERNAME/github-runner:edge}
     # build:
     #   context: .
     #   args:

@@ -7,7 +7,7 @@
 Deploy a scalable pool of self-hosted runners in minutes. Runners auto-register, execute one job each, and self-destruct — keeping your CI environment clean and your secrets safe.
 
 [![Build & Publish](https://github.com/miguelenes/github-self-hosted-runners/actions/workflows/publish.yml/badge.svg)](https://github.com/miguelenes/github-self-hosted-runners/actions/workflows/publish.yml)
-[![ghcr.io](https://img.shields.io/badge/ghcr.io-github--runner-blue?logo=docker)](https://ghcr.io/miguelenes/github-runner)
+[![ghcr.io](https://img.shields.io/badge/ghcr.io-github--runner:edge-blue?logo=docker)](https://ghcr.io/miguelenes/github-runner)
 [![Ubuntu 24.04](https://img.shields.io/badge/base-ubuntu%3A24.04-E95420?logo=ubuntu&logoColor=white)](https://hub.docker.com/_/ubuntu)
 [![Runner v2.336.0](https://img.shields.io/badge/runner-v2.336.0-2ea44f?logo=github)](https://github.com/actions/runner/releases/tag/v2.336.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
@@ -42,7 +42,7 @@ cat > .env << 'EOF'
 GITHUB_URL=https://github.com/YOUR_ORG_OR_USER/YOUR_REPO
 RUNNER_LABELS=self-hosted,linux,x64
 RUNNER_REPLICAS=2
-RUNNER_IMAGE=ghcr.io/miguelenes/github-runner:latest
+RUNNER_IMAGE=ghcr.io/miguelenes/github-runner:edge
 EOF
 
 # 3. Store your GitHub PAT as a Docker secret
@@ -51,14 +51,18 @@ echo "ghp_yourPersonalAccessTokenHere" | docker secret create github_pat -
 # 4. Initialise Swarm (skip if already done)
 docker swarm init
 
-# 5. Deploy
+# 5. Export variables and deploy
+set -o allexport && source .env && set +o allexport
 docker stack deploy -c docker-compose.yml runner
 ```
+
+> [!IMPORTANT]
+> `docker stack deploy` does **not** auto-load `.env` files. You must export the variables first (step 5 above) or the `GITHUB_URL` interpolation in `docker-compose.yml` will fail.
 
 **That's it.** Your runners will appear at your [repository runners page](https://github.com/YOUR_ORG_OR_USER/YOUR_REPO/settings/actions/runners) within ~30 seconds.
 
 > [!TIP]
-> Replace `miguelenes` above with your own GitHub username or org if you've forked this repo and published your own image. Update `YOUR_ORG_OR_USER/YOUR_REPO` to your actual GitHub target.
+> Replace `miguelenes` in `RUNNER_IMAGE` above with your own GitHub username or org if you've forked this repo and published your own image.
 
 Want the full operator CLI with `./manage.sh` for secret creation, scaling, and log following? See [Option A](#option-a--use-the-operator-cli-recommended) below.
 
