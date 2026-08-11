@@ -8,8 +8,8 @@ Deploy a scalable pool of self-hosted runners in minutes. Runners auto-register,
 
 [![Build & Publish](https://github.com/miguelenes/github-self-hosted-runners/actions/workflows/publish.yml/badge.svg)](https://github.com/miguelenes/github-self-hosted-runners/actions/workflows/publish.yml)
 [![ghcr.io](https://img.shields.io/badge/ghcr.io-github--runner-blue?logo=docker)](https://ghcr.io/miguelenes/github-runner)
-[![Ubuntu 22.04](https://img.shields.io/badge/base-ubuntu%3A22.04-E95420?logo=ubuntu&logoColor=white)](https://hub.docker.com/_/ubuntu)
-[![Runner v2.325.0](https://img.shields.io/badge/runner-v2.325.0-2ea44f?logo=github)](https://github.com/actions/runner/releases/tag/v2.325.0)
+[![Ubuntu 24.04](https://img.shields.io/badge/base-ubuntu%3A24.04-E95420?logo=ubuntu&logoColor=white)](https://hub.docker.com/_/ubuntu)
+[![Runner v2.336.0](https://img.shields.io/badge/runner-v2.336.0-2ea44f?logo=github)](https://github.com/actions/runner/releases/tag/v2.336.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
 </div>
@@ -26,6 +26,41 @@ GitHub's hosted runners are convenient but can be expensive at scale, slow for l
 - Shutting down a runner incorrectly leaves **zombie entries** in GitHub's UI
 
 This project solves every one of those problems out of the box.
+
+---
+
+## Deploy from GHCR (No Clone)
+
+> Don't want to clone the repo? Deploy directly from the published image.
+
+```bash
+# 1. Download only the compose file
+curl -O https://raw.githubusercontent.com/miguelenes/github-self-hosted-runners/main/docker-compose.yml
+
+# 2. Create your .env file
+cat > .env << 'EOF'
+GITHUB_URL=https://github.com/YOUR_ORG_OR_USER/YOUR_REPO
+RUNNER_LABELS=self-hosted,linux,x64
+RUNNER_REPLICAS=2
+RUNNER_IMAGE=ghcr.io/miguelenes/github-runner:latest
+EOF
+
+# 3. Store your GitHub PAT as a Docker secret
+echo "ghp_yourPersonalAccessTokenHere" | docker secret create github_pat -
+
+# 4. Initialise Swarm (skip if already done)
+docker swarm init
+
+# 5. Deploy
+docker stack deploy -c docker-compose.yml runner
+```
+
+**That's it.** Your runners will appear at your [repository runners page](https://github.com/YOUR_ORG_OR_USER/YOUR_REPO/settings/actions/runners) within ~30 seconds.
+
+> [!TIP]
+> Replace `miguelenes` above with your own GitHub username or org if you've forked this repo and published your own image. Update `YOUR_ORG_OR_USER/YOUR_REPO` to your actual GitHub target.
+
+Want the full operator CLI with `./manage.sh` for secret creation, scaling, and log following? See [Option A](#option-a--use-the-operator-cli-recommended) below.
 
 ---
 
@@ -92,12 +127,12 @@ After a few seconds, visit your runner settings page and see the runner appear a
 
 ---
 
-### Option B — Build locally
+### Option C — Build locally
 
 ```bash
 # Build the image (pin a specific runner version with --build-arg)
 docker build -t github-runner:latest .
-docker build --build-arg RUNNER_VERSION=2.325.0 -t github-runner:2.325.0 .
+docker build --build-arg RUNNER_VERSION=2.336.0 -t github-runner:2.336.0 .
 
 # Multi-arch build
 docker buildx build --platform linux/amd64,linux/arm64 \
