@@ -1,0 +1,21 @@
+# ── Secrets — never include in build context ───────────────────────────────────
+.env
+secrets/
+*.pem
+*.key
+
+# ── Git internals ──────────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Documentation (not needed in image) ───────────────────────────────────────
+*.md
+LICENSE
+
+# ── Editor / OS artifacts ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

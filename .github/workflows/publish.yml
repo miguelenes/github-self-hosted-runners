@@ -1,0 +1,233 @@
+# =============================================================================
+# Build & Publish — GitHub Actions Self-Hosted Runner Image
+# =============================================================================
+# Publishes a multi-arch (linux/amd64 + linux/arm64) Docker image to the
+# GitHub Container Registry (ghcr.io) on every push to main and on semver tags.
+#
+# Pull requests trigger a build-only job (no push) to validate the Dockerfile.
+#
+# Image location: ghcr.io/<owner>/github-runner
+# Authentication: GITHUB_TOKEN (built-in, no extra secrets required)
+#
+# Strategy: build each platform in its own job (avoids slow cross-arch QEMU
+# emulation for both arches in a single job), then merge the per-arch digests
+# into a single multi-arch manifest in the final 'merge' job.
+# =============================================================================
+
+name: Build & Publish Docker Image
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v*.*.*']
+  pull_request:
+    branches: [main]
+
+# Cancel any in-progress run for the same branch/tag to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY:    ghcr.io
+  IMAGE_NAME:  ${{ github.repository_owner }}/github-runner
+
+jobs:
+  # ── Job 1: Build one platform per matrix entry ──────────────────────────────
+  # Each job builds a single platform and uploads the image digest as an
+  # artifact. The 'merge' job below collects the digests and creates a
+  # combined multi-arch manifest.
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write   # Required for Cosign keyless signing (OIDC token)
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+
+    outputs:
+      # Passed to the 'merge' job for the inspect step
+      image-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    steps:
+      # ── 1. Source ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Multi-arch support ─────────────────────────────────────────────────
+      # QEMU is only needed on the arm64 matrix entry; it's a no-op on amd64.
+      - name: Set up QEMU (for ARM64 emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 3. Authenticate with GHCR ─────────────────────────────────────────────
+      # Skipped on pull requests — we build but do not push for PRs.
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 4. Generate OCI labels ────────────────────────────────────────────────
+      # docker/metadata-action computes the correct tags and labels from the
+      # Git context (branch name, tag name, commit SHA, etc.)
+      - name: Extract Docker metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Tag rules:
+          #   push to main        → :latest (via type=edge)
+          #   push tag v2.325.0   → :2.325.0, :2.325, :2, :latest
+          #   pull request        → :pr-<number>  (build only, not pushed)
+          tags: |
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=GitHub Actions Self-Hosted Runner
+            org.opencontainers.image.description=Ephemeral, ephemeral-safe self-hosted GitHub Actions runners on Docker Swarm
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
+            org.opencontainers.image.licenses=MIT
+
+      # ── 5. Build (and push by digest) ────────────────────────────────────────
+      # We push by digest (not by tag) here so the 'merge' job can assemble a
+      # multi-arch manifest pointing to both digests under a single tag set.
+      - name: Build and push image by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms:    ${{ matrix.platform }}
+          labels:       ${{ steps.meta.outputs.labels }}
+          # push-by-digest: push the image without a tag; the merge job tags it
+          outputs:      >-
+            type=image,
+            name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},
+            push-by-digest=true,
+            name-canonical=true,
+            push=${{ github.event_name != 'pull_request' }}
+          # Registry cache — persists layers between runs for fast rebuilds
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to:   >-
+            ${{ github.event_name != 'pull_request'
+              && format('type=registry,ref={0}/{1}:buildcache,mode=max', env.REGISTRY, env.IMAGE_NAME)
+              || '' }}
+          # Pass the runner version as a build arg.
+          # Keep this in sync with ARG RUNNER_VERSION in the Dockerfile.
+          build-args: |
+            RUNNER_VERSION=2.325.0
+
+      # ── 6. Export digest for the merge job ───────────────────────────────────
+      - name: Export image digest
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      # Normalise platform name to a safe artifact name (e.g. linux/arm64 → linux-arm64)
+      - name: Prepare artifact name
+        if: github.event_name != 'pull_request'
+        id: artifact
+        run: echo "name=digest-$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload digest artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name:              ${{ steps.artifact.outputs.name }}
+          path:              /tmp/digests/*
+          if-no-files-found: error
+          retention-days:    1
+
+  # ── Job 2: Merge per-platform digests into one multi-arch manifest ───────────
+  merge:
+    name: Merge multi-arch manifest
+    runs-on: ubuntu-latest
+    needs:   build
+    if:      github.event_name != 'pull_request'
+
+    permissions:
+      contents:  read
+      packages:  write
+      id-token:  write   # Required for Cosign OIDC signing
+
+    steps:
+      - name: Download all digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path:          /tmp/digests
+          pattern:       digest-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      # Create a multi-arch manifest that references all per-platform digests
+      - name: Create and push multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      # Confirm the final manifest contains both architectures
+      - name: Inspect published manifest
+        run: |
+          docker buildx imagetools inspect \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
+      # ── Cosign keyless signing ────────────────────────────────────────────────
+      # Signs the image using Sigstore's keyless OIDC flow. No private key
+      # management required — the signature is tied to the GitHub Actions OIDC
+      # identity (workflow SHA + repo + actor).
+      # Users can verify with: cosign verify ghcr.io/OWNER/github-runner:latest \
+      #   --certificate-identity-regexp "https://github.com/OWNER/.*" \
+      #   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the published image with Cosign (keyless)
+        env:
+          TAGS:   ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.meta.outputs.digest }}
+        run: |
+          images=""
+          for tag in ${TAGS}; do
+            images+="${tag}@${DIGEST} "
+          done
+          # shellcheck disable=SC2086
+          cosign sign --yes ${images}

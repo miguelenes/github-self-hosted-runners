@@ -1,0 +1,200 @@
+# =============================================================================
+# GitHub Actions Self-Hosted Runner — Docker Swarm Stack
+# =============================================================================
+# Compose file version 3.8 is required for Swarm secrets and the full
+# 'deploy' block feature set (update_config, rollback_config, etc.)
+#
+# Prerequisites:
+#   1. Docker Swarm initialised:  docker swarm init
+#   2. PAT secret created:        echo "ghp_xxx" | docker secret create github_pat -
+#   3. .env file populated from .env.example
+#
+# Deploy:
+#   docker stack deploy -c docker-compose.yml runner
+#
+# Scale:
+#   docker service scale runner_github-runner=4
+#
+# Remove:
+#   docker stack rm runner
+# =============================================================================
+
+version: "3.8"
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+# Docker Swarm secrets are the recommended way to handle sensitive values.
+# They are mounted as files inside the container at /run/secrets/<name>,
+# avoiding exposure via environment variables or image layers.
+#
+# Choose ONE of the following secret definitions:
+#
+# Option A — External secret (production, recommended):
+#   Created externally with: echo "ghp_yourPAT" | docker secret create github_pat -
+#   This is the most secure approach; the PAT never touches disk unencrypted.
+#
+# Option B — File-based secret (development / CI bootstrap):
+#   Uncomment the 'file' line and create ./secrets/github_pat.txt
+#   WARNING: Do not commit the secrets/ directory to version control.
+secrets:
+  github_pat:
+    external: true          # ← Use this for production (pre-created secret)
+    # file: ./secrets/github_pat.txt  # ← Uncomment for dev (file-based secret)
+
+  # Alternatively, pass a pre-generated registration token (expires in ~1hr):
+  # runner_token:
+  #   external: true        # docker secret create runner_token -
+
+# ── Services ──────────────────────────────────────────────────────────────────
+services:
+  github-runner:
+    # -------------------------------------------------------------------
+    # Image configuration
+    # -------------------------------------------------------------------
+    # By default, use a pre-built image tag from a registry (set RUNNER_IMAGE).
+    # Uncomment 'build' to build locally (useful during development).
+    # Pre-built multi-arch image published to GitHub Container Registry.
+    # Replace YOUR_USERNAME with the GitHub username or org that owns this repo.
+    # To build locally instead, uncomment the 'build' block below.
+    image: ${RUNNER_IMAGE:-ghcr.io/YOUR_USERNAME/github-runner:latest}
+    # build:
+    #   context: .
+    #   args:
+    #     RUNNER_VERSION: "2.325.0"
+
+    # -------------------------------------------------------------------
+    # Environment variables
+    # -------------------------------------------------------------------
+    # Sensitive values (tokens, PATs) MUST use Docker secrets (see above).
+    # Only non-sensitive configuration goes here.
+    environment:
+      # Required: GitHub repo or org URL
+      GITHUB_URL: ${GITHUB_URL:?GITHUB_URL must be set in .env}
+
+      # Runner identity & routing
+      RUNNER_LABELS: ${RUNNER_LABELS:-self-hosted,linux,x64}
+      RUNNER_GROUP: ${RUNNER_GROUP:-Default}
+
+      # Ephemeral mode (strongly recommended for containers):
+      # Each runner instance processes exactly one job then exits cleanly.
+      # Swarm restarts the container to create a fresh runner pool.
+      RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-true}
+
+      # Optional: Override runner display name (auto-generated if unset)
+      # RUNNER_NAME: my-custom-runner
+
+      # -------------------------------------------------------------------
+      # Proxy settings (optional — leave blank if not behind a proxy)
+      # Per GitHub docs, these are written to the runner's .env file
+      # so the runner process reads them before establishing connections.
+      # -------------------------------------------------------------------
+      https_proxy: ${HTTPS_PROXY:-}
+      http_proxy: ${HTTP_PROXY:-}
+      no_proxy: ${NO_PROXY:-}
+
+    # -------------------------------------------------------------------
+    # Secrets (mounted as files at /run/secrets/<secret-name>)
+    # -------------------------------------------------------------------
+    secrets:
+      - github_pat          # Mounted at /run/secrets/github_pat
+      # - runner_token      # Uncomment if using a pre-generated reg token
+
+    # -------------------------------------------------------------------
+    # Volumes
+    # -------------------------------------------------------------------
+    volumes:
+      # Docker-out-of-Docker (DooD): share the host's Docker socket.
+      # This allows CI jobs to build images, run containers, and use
+      # docker-compose / docker buildx from within the runner container.
+      #
+      # Security note: access to the Docker socket grants root-equivalent
+      # privileges on the host. Use runner groups and trusted workflows only.
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: false
+
+      # Optional: persistent workspace cache across ephemeral runs.
+      # Uncomment and create the volume to cache tool downloads (e.g. npm, pip).
+      # - type: volume
+      #   source: runner-workspace
+      #   target: /home/runner/_work
+
+    # -------------------------------------------------------------------
+    # Swarm deployment configuration
+    # -------------------------------------------------------------------
+    deploy:
+      # Replicated mode: run N identical runner instances.
+      # Default: 1. Scale with: docker service scale runner_github-runner=N
+      # Each replica registers as a separate runner with a unique name.
+      mode: replicated
+      replicas: ${RUNNER_REPLICAS:-1}
+
+      # Restart policy: restart the container on failure.
+      # For ephemeral runners, on-failure also triggers restart after a
+      # successful job completion (exit 0 → Swarm creates a fresh runner).
+      restart_policy:
+        condition: on-failure    # Restart on non-zero exit or OOM kill
+        delay: 5s                # Wait before restarting (avoid tight loops)
+        max_attempts: 5          # Give up after 5 consecutive failures
+        window: 60s              # Reset failure counter after 60s of healthy run
+
+      # Rolling update configuration:
+      # Starts new runner before stopping old one (start-first).
+      # This ensures continuous runner availability during image updates.
+      update_config:
+        parallelism: 1           # Update one replica at a time
+        delay: 10s               # Pause between each replica update
+        order: start-first       # New runner must be healthy before old is removed
+        failure_action: rollback # Automatically roll back on update failure
+        monitor: 30s             # Observe each updated task for 30s before proceeding
+
+      # Automatic rollback configuration
+      rollback_config:
+        parallelism: 1
+        delay: 0s
+        order: stop-first
+        failure_action: pause    # Pause rollback on failure for manual intervention
+
+      # Resource limits and reservations.
+      # Adjust based on your workflow requirements and host capacity.
+      # These prevent a rogue job from consuming all host resources.
+      resources:
+        limits:
+          cpus: "1.0"            # Max 1 CPU core per runner
+          memory: 1G             # Max 1 GiB RAM per runner
+        reservations:
+          cpus: "0.25"           # Guarantee at least 0.25 CPU
+          memory: 256M           # Guarantee at least 256 MiB
+
+      # Placement constraints (optional).
+      # Uncomment to restrict runners to specific Swarm nodes.
+      # placement:
+      #   constraints:
+      #     - node.role == worker
+      #     - node.labels.runner == "true"
+
+    # -------------------------------------------------------------------
+    # Health check
+    # -------------------------------------------------------------------
+    # Verifies the runner process (run.sh) is alive. Swarm uses this to
+    # determine whether a task is healthy before completing rolling updates.
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "run.sh"]
+      interval: 30s       # Check every 30 seconds
+      timeout: 10s        # Fail the check if it takes more than 10s
+      retries: 3          # Mark unhealthy after 3 consecutive failures
+      start_period: 60s   # Give the runner 60s to register before health checks begin
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+# Overlay network for multi-node Swarm deployments.
+# 'attachable: true' allows standalone containers to connect (useful for debugging).
+networks:
+  default:
+    driver: overlay
+    attachable: true
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+# Uncomment if using a persistent workspace cache volume (see volumes section above).
+# volumes:
+#   runner-workspace:
+#     driver: local

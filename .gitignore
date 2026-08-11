@@ -1,0 +1,17 @@
+# Environment variables — never commit real credentials
+.env
+
+# Secrets directory (file-based secrets for dev)
+secrets/
+*.pem
+*.key
+*.token
+
+# IDE and editor artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
