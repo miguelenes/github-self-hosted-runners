@@ -208,20 +208,14 @@ jobs:
             type=semver,pattern={{major}}
 
       # Create a multi-arch manifest that references all per-platform digests.
-      # Also captures the manifest digest for Cosign signing below.
       - name: Create and push multi-arch manifest
-        id: manifest
         working-directory: /tmp/digests
         run: |
-          manifest_output=$(docker buildx imagetools create \
+          docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *))
-          echo "${manifest_output}"
-          # Extract the manifest digest (last line, sha256: prefix)
-          digest=$(echo "${manifest_output}" | tail -1 | grep -oP 'sha256:[a-f0-9]+')
-          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      # Inspect published manifest (also grabs the first tag for signing)
+      # Inspect published manifest and pick the first tag for Cosign signing
       - name: Inspect published manifest
         id: inspect
         env:
@@ -237,7 +231,7 @@ jobs:
 
       - name: Sign the published image with Cosign (keyless)
         run: |
-          cosign sign --yes "${{ steps.inspect.outputs.first_tag }}@${{ steps.manifest.outputs.digest }}"
+          cosign sign --yes "${{ steps.inspect.outputs.first_tag }}"
 
       # ── Workflow Summary Output (Merge Job) ──────────────────────────────────
       - name: Generate Workflow Summary
