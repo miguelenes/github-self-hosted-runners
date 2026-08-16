@@ -1,0 +1,8 @@
+---
+description: Self-hosted runner hardening
+alwaysApply: true
+---
+
+# Self-hosted runner hardening
+
+Treat self-hosted runners as high-risk, especially with public repos. Use ephemeral runners, labels to route jobs, least-privilege users, and avoid sudo in CI. Review workflows that target runner labels.

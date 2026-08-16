@@ -1,0 +1,8 @@
+---
+description: Compose security and healthchecks
+alwaysApply: true
+---
+
+# Compose security and healthchecks
+
+Use ${VAR} env placeholders for secrets and image tags; never hardcode credentials. Add healthchecks to runner containers. Prefer named volumes and pinned image digests.
